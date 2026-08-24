@@ -1,3 +1,4 @@
+import AddNodeBtn from "@/components/AddNodeBtn";
 import WebhookTrigger from "@/components/WebhookTrigger";
 
 interface Execution {
@@ -10,7 +11,7 @@ interface Execution {
 
 async function getExecutions(workflowId: string): Promise<Execution[]> {
   const res = await fetch(
-    `http://localhost:8080/api/v1/workflows/${workflowId}/executions`,
+    `${process.env.NEXT_PUBLIC_API_URL}/api/v1/workflows/${workflowId}/executions`,
     { cache: "no-store" },
   );
   if (!res.ok) return [];
@@ -37,6 +38,8 @@ export default async function WorkflowDetail({
         <h2 className="text-4xl text-green-400 mb-6"> WORKFLOW_LOGS</h2>
 
         <p className="text-xl text-gray-400 mb-8">TARGET: {workflowId}</p>
+
+        <AddNodeBtn workflowId={workflowId} />
         <WebhookTrigger workflowId={workflowId} />
 
         <div className="space-y-6">

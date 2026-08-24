@@ -1,3 +1,4 @@
+import CreateWorkflowBtn from "@/components/CreateWorkflowBtn";
 import Link from "next/link";
 interface Workflow {
   id: string;
@@ -7,9 +8,12 @@ interface Workflow {
 }
 
 async function getWorkflows(): Promise<Workflow[]> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/workflows`, {
-    cache: "no-store",
-  });
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/api/v1/workflows`,
+    {
+      cache: "no-store",
+    },
+  );
   if (!res.ok) {
     console.error("Failed to fetch workflows");
     return [];
@@ -56,9 +60,7 @@ export default async function Home() {
           )}
         </div>
 
-        <button className="bg-green-500 text-black px-8 py-3 text-3xl font-bold retro-border retro-shadow retro-btn-active hover:bg-green-400 transition-colors cursor-pointer">
-          [ + NEW WORKFLOW ]
-        </button>
+        <CreateWorkflowBtn />
       </div>
     </main>
   );
