@@ -39,7 +39,7 @@ func AnalyzePayloadWithTools(prompt string, payloadData string, tools map[string
 		return "", nil, fmt.Errorf("GEMINI_API_KEY is not set")
 	}
 
-	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=" + apiKey
+	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=" + apiKey
 
 	fullPrompt := fmt.Sprintf("%s\n\nData:\n%s", prompt, payloadData)
 

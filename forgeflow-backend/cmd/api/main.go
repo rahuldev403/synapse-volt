@@ -25,9 +25,11 @@ func main() {
 		AppName: "ForgeFlow Backend v1",
 	})
 
+	clientURL := config.GetEnv("CLIENT_URL", "http://localhost:3000")
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: config.GetEnv("CLIENT_URL", "http://localhost:3000"),
-		AllowHeaders: "Origin,Content-type,Accept,Authorization",
+		AllowOrigins: "http://localhost:3000, http://127.0.0.1:3000, " + clientURL,
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+		AllowMethods: "GET, POST, HEAD, PUT, DELETE, PATCH, OPTIONS",
 	}))
 
 	app.Use(logger.New())

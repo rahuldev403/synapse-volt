@@ -1,55 +1,112 @@
 @import "tailwindcss";
 
-@layer utilities {
-  .cyber-border {
-    border: 1px solid #00ff00;
-    box-shadow: 0 0 10px #00ff0033, inset 0 0 10px #00ff0033;
-  }
-  
-  .cyber-shadow {
-    box-shadow: 0 0 15px #00ff00, 0 0 5px #00ff00;
-  }
-  
-  .cyber-btn-glow {
-    box-shadow: 0 0 20px #8b5cf6, 0 0 40px #8b5cf6, inset 0 0 15px #8b5cf6;
-    border: 2px solid #a855f7;
+@import "@xyflow/react/dist/style.css";
+
+@layer base {
+  :root {
+    --bg-base: #000000;
+    --bg-surface: #080808;
+    --bg-elevated: #0f0f0f;
+    --accent-yellow: #facc15;
+    --accent-yellow-glow: rgba(250, 204, 21, 0.4);
   }
 
-  .cyber-btn-active:active {
-    transform: scale(0.98);
-    box-shadow: 0 0 10px #8b5cf6, inset 0 0 25px #8b5cf6;
-  }
-  
-  .scanlines {
-    background: linear-gradient(
-      to bottom,
-      rgba(255, 255, 255, 0),
-      rgba(255, 255, 255, 0) 50%,
-      rgba(0, 0, 0, 0.2) 50%,
-      rgba(0, 0, 0, 0.2)
-    );
-    background-size: 100% 4px;
-    pointer-events: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: 9999;
-  }
-  
-  .grid-bg {
-    background-size: 40px 40px;
-    background-image: 
-      linear-gradient(to right, rgba(0, 255, 0, 0.05) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(0, 255, 0, 0.05) 1px, transparent 1px);
-    background-color: #050505;
+  body {
+    background-color: #000000;
+    color: #f3f4f6;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    selection-background-color: rgba(250, 204, 21, 0.3);
+    selection-color: #ffffff;
   }
 
-  .terminal-window {
-    background: rgba(0, 20, 0, 0.7);
-    backdrop-filter: blur(4px);
-    border: 1px solid #00ff00;
-    box-shadow: 0 0 15px rgba(0, 255, 0, 0.1);
+  /* Sleek custom scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
   }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(250, 204, 21, 0.2);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(250, 204, 21, 0.4);
+  }
+}
+
+/* React Flow Visual Overrides */
+.react-flow__bg {
+  background-color: #000000 !important;
+}
+
+.react-flow__controls {
+  background: rgba(12, 12, 12, 0.9) !important;
+  backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(250, 204, 21, 0.2) !important;
+  border-radius: 12px !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.8),
+    0 0 20px rgba(250, 204, 21, 0.08) !important;
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  fill: #a3a3a3 !important;
+  transition: all 0.2s ease !important;
+}
+
+.react-flow__controls-button:hover {
+  background: rgba(250, 204, 21, 0.1) !important;
+  fill: #facc15 !important;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+
+.react-flow__attribution {
+  display: none !important;
+}
+
+/* Pixelated Grid & Dotted Patterns */
+.bg-pixel-grid {
+  background-size: 20px 20px;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+}
+
+.bg-dot-pattern {
+  background-size: 16px 16px;
+  background-image: radial-gradient(
+    rgba(250, 204, 21, 0.12) 1px,
+    transparent 1px
+  );
+}
+
+.bg-dot-pattern-white {
+  background-size: 20px 20px;
+  background-image: radial-gradient(
+    rgba(255, 255, 255, 0.08) 1px,
+    transparent 1px
+  );
+}
+
+/* Pixel shadow utility */
+.pixel-shadow-yellow {
+  box-shadow: 3px 3px 0px 0px #facc15;
+}
+
+.pixel-shadow-white {
+  box-shadow: 3px 3px 0px 0px #ffffff;
+}
+
+.pixel-border {
+  border: 1px solid rgba(250, 204, 21, 0.3);
 }

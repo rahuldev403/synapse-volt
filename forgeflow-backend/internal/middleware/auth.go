@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"log"
 	"strings"
 
+	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/clerk/clerk-sdk-go/v2/jwt"
 	"github.com/gofiber/fiber/v2"
 	"github.com/rahuldev403/forgeflow/internal/config"
@@ -27,13 +29,15 @@ func ClerkAuth() fiber.Handler {
 
 		token := parts[1]
 
-		// Ensure we load the secret key from the env (for debugging check)
+		// Ensure we load the secret key from the env
 		secretKey := config.GetEnv("CLERK_SECRET_KEY", "")
 		if secretKey == "" {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 				"error": "Clerk secret key is not configured",
 			})
 		}
+		
+		clerk.SetKey(secretKey)
 
 		// Verify the session token
 		claims, err := jwt.Verify(c.Context(), &jwt.VerifyParams{
@@ -41,6 +45,7 @@ func ClerkAuth() fiber.Handler {
 		})
 		
 		if err != nil {
+			log.Printf("Clerk JWT Verify Error: %v\n", err)
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": "Invalid token",
 				"details": err.Error(),

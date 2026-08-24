@@ -1,26 +1,9 @@
-import AddNodeBtn from "@/components/AddNodeBtn";
-import WebhookTrigger from "@/components/WebhookTrigger";
+import WorkflowCanvas from "@/components/WorkflowCanvas";
+import ExecutionPanel from "@/components/ExecutionPanel";
+import { UserButton, SignInButton } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
-
-interface Execution {
-  id: string;
-  status: string;
-  trigger_payload: any;
-  started_at: string;
-  completed_at: string | null;
-}
-
-async function getExecutions(workflowId: string, token: string | null): Promise<Execution[]> {
-  const res = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/api/v1/workflows/${workflowId}/executions`,
-    { 
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      cache: "no-store" 
-    },
-  );
-  if (!res.ok) return [];
-  return res.json();
-}
+import { ArrowLeft, GitBranch, Zap, Radio } from "lucide-react";
+import Link from "next/link";
 
 export default async function WorkflowDetail({
   params,
@@ -29,80 +12,71 @@ export default async function WorkflowDetail({
 }) {
   const resolvedParams = await params;
   const workflowId = resolvedParams.id;
-
-  const { getToken } = auth();
-  const token = await getToken();
-
-  const executions = await getExecutions(workflowId, token);
+  const { userId } = await auth();
 
   return (
-    <main className="p-10">
-      <h1 className="text-6xl mb-12 text-black bg-green-500 inline-block p-4 cyber-shadow font-bold uppercase tracking-widest border border-green-300">
-        &gt; FORGEFLOW_ROOT
-      </h1>
+    <main className="flex flex-col h-screen bg-black text-neutral-100 overflow-hidden select-none selection:bg-yellow-400 selection:text-black">
+      {/* Top Navigation Bar */}
+      <header className="flex justify-between items-center px-6 py-3 border-b border-white/[0.08] bg-[#060606]/90 backdrop-blur-2xl z-30">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/"
+            className="text-neutral-400 hover:text-white transition flex items-center gap-2 text-xs font-mono px-2.5 py-1.5 rounded-lg hover:bg-white/[0.05]"
+          >
+            <ArrowLeft size={14} />
+            <span>[ Dashboard ]</span>
+          </Link>
+          <div className="h-4 w-px bg-white/10" />
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-yellow-400/15 text-yellow-400 border border-yellow-400/30">
+              <GitBranch size={15} />
+            </div>
+            <h1 className="text-xs font-bold tracking-tight text-white uppercase font-mono">
+              Pipeline Graph
+            </h1>
+            <span className="bg-white/[0.04] border border-white/10 text-neutral-400 text-[11px] px-2.5 py-0.5 rounded-md font-mono">
+              {workflowId}
+            </span>
+          </div>
+        </div>
 
-      <div className="cyber-border cyber-shadow p-8 bg-black/80 backdrop-blur-md inline-block w-full max-w-5xl relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-1 bg-green-500 shadow-[0_0_10px_#00ff00]"></div>
-        
-        <h2 className="text-4xl text-purple-500 mb-2 font-bold flex items-center gap-4">
-          <span className="w-4 h-4 bg-purple-500 block animate-pulse"></span>
-          WORKFLOW_LOGS
-        </h2>
-
-        <p className="text-xl text-green-700 mb-8 font-mono border-b border-green-900 pb-4">
-          TARGET: {workflowId}
-        </p>
-
-        <AddNodeBtn workflowId={workflowId} />
-        <WebhookTrigger workflowId={workflowId} />
-
-        <div className="space-y-6 mt-12">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-ping"></div>
-            <h3 className="text-2xl text-green-500 tracking-wider">EXECUTION_HISTORY</h3>
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-400/10 border border-yellow-400/30 text-yellow-400 text-[11px] font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+            3 Workers Online
           </div>
 
-          {executions.length === 0 ? (
-            <p className="text-xl text-purple-400 animate-pulse bg-purple-900/20 p-4 border border-purple-800">
-              [ WARN ] NO EXECUTIONS DETECTED. AWAITING WEBHOOK TRIGGER...
-            </p>
+          <div className="h-4 w-px bg-white/10" />
+
+          {!userId ? (
+            <SignInButton mode="modal">
+              <button className="bg-yellow-400 hover:bg-yellow-300 text-black px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition cursor-pointer">
+                Sign In
+              </button>
+            </SignInButton>
           ) : (
-            executions.map((ex) => (
-              <div
-                key={ex.id}
-                className="p-6 terminal-window flex flex-col gap-3 relative overflow-hidden"
-              >
-                <div className="absolute left-0 top-0 w-1 h-full bg-green-500 opacity-50"></div>
-                <div className="flex justify-between items-center border-b border-green-800/50 pb-3">
-                  <span className="text-xl text-green-300 font-mono">
-                    ID: {ex.id.split("-")[0]}...
-                  </span>
-                  <span
-                    className={`text-sm px-4 py-1 font-bold tracking-widest cyber-border ${
-                      ex.status === "SUCCESS"
-                        ? "bg-green-500/20 text-green-400 border-green-500"
-                        : ex.status === "FAILED"
-                          ? "bg-red-500/20 text-red-400 border-red-500"
-                          : "bg-purple-500/20 text-purple-400 border-purple-500 animate-pulse"
-                    }`}
-                  >
-                    [{ex.status}]
-                  </span>
-                </div>
-
-                <p className="text-sm text-green-600 font-mono">
-                  TIMESTAMP: {new Date(ex.started_at).toISOString()}
-                </p>
-
-                <div className="mt-2 bg-black/50 p-4 border border-green-900/50">
-                  <p className="text-purple-500 text-sm mb-2 font-bold tracking-wider"> &gt; PAYLOAD_DATA:</p>
-                  <pre className="text-green-400 text-sm overflow-x-auto font-mono">
-                    {JSON.stringify(ex.trigger_payload, null, 2)}
-                  </pre>
-                </div>
-              </div>
-            ))
+            <UserButton
+              appearance={{
+                elements: {
+                  userButtonAvatarBox:
+                    "w-7 h-7 ring-2 ring-yellow-400/30 hover:ring-yellow-400 transition",
+                },
+              }}
+            />
           )}
+        </div>
+      </header>
+
+      {/* Main Workspace Layout */}
+      <div className="flex-1 flex p-3 gap-3 overflow-hidden bg-black">
+        {/* Canvas Workspace */}
+        <div className="flex-1 flex flex-col min-w-0 rounded-2xl overflow-hidden border border-white/[0.08] relative shadow-2xl">
+          <WorkflowCanvas workflowId={workflowId} />
+        </div>
+
+        {/* Live Execution Inspector Drawer */}
+        <div className="w-[400px] flex-shrink-0 flex flex-col min-h-0">
+          <ExecutionPanel workflowId={workflowId} />
         </div>
       </div>
     </main>
