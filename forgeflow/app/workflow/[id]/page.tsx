@@ -1,3 +1,5 @@
+import WebhookTrigger from "@/components/WebhookTrigger";
+
 interface Execution {
   id: string;
   status: string;
@@ -18,9 +20,12 @@ async function getExecutions(workflowId: string): Promise<Execution[]> {
 export default async function WorkflowDetail({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
-  const executions = await getExecutions(params.id);
+  const resolvedParams = await params;
+  const workflowId = resolvedParams.id;
+
+  const executions = await getExecutions(workflowId);
 
   return (
     <main className="p-10">
@@ -30,7 +35,9 @@ export default async function WorkflowDetail({
 
       <div className="retro-border retro-shadow p-8 bg-black inline-block w-full max-w-5xl">
         <h2 className="text-4xl text-green-400 mb-6"> WORKFLOW_LOGS</h2>
-        <p className="text-xl text-gray-400 mb-8">TARGET: {params.id}</p>
+
+        <p className="text-xl text-gray-400 mb-8">TARGET: {workflowId}</p>
+        <WebhookTrigger workflowId={workflowId} />
 
         <div className="space-y-6">
           {executions.length === 0 ? (

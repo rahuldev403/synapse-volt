@@ -6,9 +6,9 @@ import (
 )
 
 func SetupRoutes(app *fiber.App) {
-	api := app.Group("api/v1")
+	api := app.Group("/api/v1")
 
-	api.Get("/helath", handlers.HealthCheck)
+	api.Get("/health", handlers.HealthCheck)
 
 	api.Post("/workflows", handlers.CreateWorkflow)
 
@@ -18,5 +18,5 @@ func SetupRoutes(app *fiber.App) {
 
 	api.Post("/webhooks/:workflowId", handlers.TriggerWebhook)
 
-	api.Get("workflows/:workflowId/exections", handlers.GetWorkflowExecutions)
+	api.Get("/workflows/:workflowId/executions", handlers.GetWorkflowExecutions)
 }
