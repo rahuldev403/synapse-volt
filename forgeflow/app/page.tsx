@@ -66,8 +66,8 @@ export default async function Home() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="font-bold text-white text-base tracking-tight">
-                ForgeFlow
+              <span className="font-bold text-white text-base tracking-tight font-mono">
+                Synapse<span className="text-yellow-400">Volt</span>
               </span>
               <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-yellow-400/10 border border-yellow-400/30 text-yellow-400 tracking-wider">
                 WORKSPACE // v1.0

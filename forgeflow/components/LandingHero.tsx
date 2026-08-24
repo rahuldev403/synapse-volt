@@ -96,11 +96,11 @@ export default function LandingHero() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="font-bold text-white text-base tracking-tight">
-                ForgeFlow
+              <span className="font-bold text-white text-base tracking-tight font-mono">
+                Synapse<span className="text-yellow-400">Volt</span>
               </span>
               <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-yellow-400/10 border border-yellow-400/30 text-yellow-400 tracking-wider">
-                ENGINE // v1.0
+                ORCHESTRATOR // v1.0
               </span>
             </div>
           </div>
@@ -375,7 +375,7 @@ export default function LandingHero() {
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-yellow-400" />
             <span className="text-neutral-300">
-              ForgeFlow Core — All worker pools online
+              SynapseVolt Core — All Go worker pools online
             </span>
           </div>
           <span>Next.js 15 • Go Concurrency • PostgreSQL • React Flow</span>

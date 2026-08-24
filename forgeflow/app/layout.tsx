@@ -10,9 +10,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "ForgeFlow — Autonomous AI Workflow Engine",
+  title: "SynapseVolt — Autonomous AI Pipeline Orchestrator",
   description:
-    "Enterprise orchestration engine with Go concurrency and deterministic AI agent tools.",
+    "High-throughput DAG workflow engine with Go concurrency and deterministic AI agent tool calling.",
 };
 
 export default function RootLayout({
@@ -28,7 +28,7 @@ export default function RootLayout({
     >
       <html lang="en" className="dark scroll-smooth">
         <body
-          className={`${inter.className} bg-black text-neutral-100 min-h-screen antialiased selection:bg-blue-500/25 selection:text-white`}
+          className={`${inter.className} bg-black text-neutral-100 min-h-screen antialiased selection:bg-yellow-400 selection:text-black`}
         >
           {children}
         </body>
