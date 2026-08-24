@@ -2,19 +2,25 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 
 export default function CreateWorkflowBtn() {
   const router = useRouter();
+  const { getToken } = useAuth();
   const [isCreating, setIsCreating] = useState(false);
 
   const handleCreate = async () => {
     setIsCreating(true);
     try {
+      const token = await getToken();
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/workflows`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
           body: JSON.stringify({
             name: "NEW AGENT WORKFLOW",
             description: "Created directly from the retro UI",

@@ -23,16 +23,18 @@ func CreateWorkflow(c *fiber.Ctx) error {
 		})
 	}
 
+	userID := c.Locals("user_id").(string)
+
 	query := `
-		INSERT INTO workflows (name, description, is_active) 
-		VALUES ($1, $2, $3) 
+		INSERT INTO workflows (user_id, name, description, is_active) 
+		VALUES ($1, $2, $3, $4) 
 		RETURNING id, created_at
 	`
 
 	var id string
 	var createdAt time.Time
 
-	err := database.DB.QueryRow(context.Background(), query, req.Name, req.Description, true).Scan(&id, &createdAt)
+	err := database.DB.QueryRow(context.Background(), query, userID, req.Name, req.Description, true).Scan(&id, &createdAt)
 
 	if err != nil {
 		log.Printf("DB Error: %v", err)
@@ -57,10 +59,11 @@ type WorkflowResponse struct {
 }
 
 func GetWorkflows(c *fiber.Ctx) error {
+	userID := c.Locals("user_id").(string)
 
-	query := `SELECT id, name, description, is_active, created_at FROM workflows ORDER BY created_at DESC`
+	query := `SELECT id, name, description, is_active, created_at FROM workflows WHERE user_id = $1 ORDER BY created_at DESC`
 
-	rows, err := database.DB.Query(context.Background(), query)
+	rows, err := database.DB.Query(context.Background(), query, userID)
 	if err != nil {
 		log.Printf("DB Fetch Error: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{ 
@@ -71,6 +74,9 @@ func GetWorkflows(c *fiber.Ctx) error {
 	defer rows.Close()
 
 	var workflows []WorkflowResponse
+
+	// Initialize to empty slice so we return [] instead of null if empty
+	workflows = make([]WorkflowResponse, 0)
 
 	for rows.Next() {
 		var wf WorkflowResponse

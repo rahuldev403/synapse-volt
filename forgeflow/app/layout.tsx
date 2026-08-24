@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import { VT323 } from "next/font/google";
+import { Fira_Code } from "next/font/google";
 import "./globals.css";
+import { ClerkProvider, UserButton } from "@clerk/nextjs";
 
-const vt323 = VT323({ weight: "400", subsets: ["latin"] });
+const firaCode = Fira_Code({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "ForgeFlow | 8-Bit Engine",
+  title: "ForgeFlow | CYBER_ENGINE",
   description: "AI Workflow Automation Engine",
 };
 
@@ -15,12 +16,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body
-        className={`${vt323.className} bg-gray-900 text-green-400 min-h-screen`}
-      >
-        {children}
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en">
+        <body
+          className={`${firaCode.className} bg-black text-green-500 min-h-screen grid-bg relative overflow-x-hidden`}
+        >
+          <div className="scanlines"></div>
+          <div className="relative z-10 max-w-7xl mx-auto p-4 flex justify-end">
+            <UserButton appearance={{ elements: { userButtonAvatarBox: "w-12 h-12 cyber-border" } }} />
+          </div>
+          <div className="relative z-10 max-w-7xl mx-auto">
+            {children}
+          </div>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

@@ -4,7 +4,9 @@ go 1.26.4
 
 require (
 	github.com/andybalholm/brotli v1.2.2 // indirect
+	github.com/clerk/clerk-sdk-go/v2 v2.7.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
+	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
 	github.com/gofiber/fiber/v2 v2.52.15 // indirect
 	github.com/gofiber/fiber/v3 v3.5.0 // indirect
 	github.com/gofiber/schema v1.8.4 // indirect

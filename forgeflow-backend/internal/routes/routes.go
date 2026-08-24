@@ -3,20 +3,20 @@ package routes
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/rahuldev403/forgeflow/internal/handlers"
+	"github.com/rahuldev403/forgeflow/internal/middleware"
 )
 
 func SetupRoutes(app *fiber.App) {
 	api := app.Group("/api/v1")
 
 	api.Get("/health", handlers.HealthCheck)
+	api.Post("/webhooks/:workflowId", handlers.TriggerWebhook) // Webhooks stay public
 
-	api.Post("/workflows", handlers.CreateWorkflow)
-
-	api.Get("/workflows", handlers.GetWorkflows)
-
-	api.Post("/workflows/:workflowId/nodes", handlers.CreateWorkflowNode)
-
-	api.Post("/webhooks/:workflowId", handlers.TriggerWebhook)
-
-	api.Get("/workflows/:workflowId/executions", handlers.GetWorkflowExecutions)
+	// Protected routes
+	protected := api.Group("/", middleware.ClerkAuth())
+	
+	protected.Post("/workflows", handlers.CreateWorkflow)
+	protected.Get("/workflows", handlers.GetWorkflows)
+	protected.Post("/workflows/:workflowId/nodes", handlers.CreateWorkflowNode)
+	protected.Get("/workflows/:workflowId/executions", handlers.GetWorkflowExecutions)
 }

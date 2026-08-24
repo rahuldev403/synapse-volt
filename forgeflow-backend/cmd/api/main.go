@@ -27,7 +27,7 @@ func main() {
 
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: config.GetEnv("CLIENT_URL", "http://localhost:3000"),
-		AllowHeaders: "Origin,Content-type,Accept",
+		AllowHeaders: "Origin,Content-type,Accept,Authorization",
 	}))
 
 	app.Use(logger.New())
