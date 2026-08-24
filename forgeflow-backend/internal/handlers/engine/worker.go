@@ -22,16 +22,40 @@ func worker(id int) {
 	log.Printf("Worker %d is ready and listening", id)
 
 	for executionID := range JobQueue {
-		log.Printf("[Worker %d] Starting execution: %s", id, executionID)
+		log.Printf("[Worker %d] Picked up execution: %s", id, executionID)
 
-		err := processWorkflowSteps(id, executionID)
+		maxRetries := 3
+		attempt := 1
+		success := false
 
-		if err != nil {
-			log.Printf("[Worker %d] Execution FAILED: %v", id, err)
-			updateExecutionStatus(executionID, "FAILED")
-		} else {
-			log.Printf("[Worker %d] Execution SUCCESS: %s", id, executionID)
-			updateExecutionStatus(executionID, "SUCCESS")
+		for attempt <= maxRetries {
+			log.Printf("[Worker %d] Starting execution: %s (Attempt %d/%d)", id, executionID, attempt, maxRetries)
+
+			err := processWorkflowSteps(id, executionID)
+
+			if err != nil {
+				log.Printf("[Worker %d] ⚠️ Execution FAILED: %v", id, err)
+				
+				if attempt < maxRetries {
+					backoff := time.Duration(attempt*2) * time.Second
+					log.Printf("[Worker %d] Retrying in %v...", id, backoff)
+					time.Sleep(backoff)
+					attempt++
+				} else {
+					log.Printf("[Worker %d] ❌ Max retries reached. Marking as FAILED.", id)
+					updateExecutionStatus(executionID, "FAILED")
+					break
+				}
+			} else {
+				log.Printf("[Worker %d] ✅ Execution SUCCESS: %s", id, executionID)
+				updateExecutionStatus(executionID, "SUCCESS")
+				success = true
+				break 
+			}
+		}
+
+		if !success && attempt > maxRetries {
+			log.Printf("[Worker %d] Job %s moved to Dead-Letter state.", id, executionID)
 		}
 	}
 }
@@ -65,20 +89,22 @@ func processWorkflowSteps(workerID int, executionID string) error {
 		log.Printf("[Worker %d]   -> Running Step %d: [%s] %s", workerID, stepCount, nodeType, nodeName)
 
 		if nodeType == "AI" {
-			log.Printf("[Worker %d]      Contacting LLM...", workerID)
-			
-			prompt := "You are a customer support router. Read this JSON ticket payload and reply with exactly one word: 'BILLING', 'TECHNICAL', or 'GENERAL'."
-			
-			webhookData := string(triggerPayload) 
+			log.Printf("[Worker %d]      Contacting AI Agent with Tools...", workerID)
 
-			result, err := ai.AnalyzePayload(prompt, webhookData)
+			prompt := "Read this support ticket. If the customer is asking for money back or a refund, use the refund_customer tool."
+			webhookData := string(triggerPayload)
+			toolName, toolArgs, err := ai.AnalyzePayloadWithTools(prompt, webhookData, ai.AvailableTools)
 			if err != nil {
 				log.Printf("[Worker %d]      AI Error: %v", workerID, err)
+				return err
+			} else if toolName != "NO_TOOL_CALLED" {
+				log.Printf("[Worker %d]      🤖 AI decided to call tool: %s", workerID, toolName)
+
+				toolResult := ai.ExecuteLocalTool(toolName, toolArgs)
+				log.Printf("[Worker %d]      Tool Result: %s", workerID, toolResult)
 			} else {
-				log.Printf("[Worker %d]      AI Decision: %s", workerID, result)
+				log.Printf("[Worker %d]      AI Decision: Routine message, no tool required.", workerID)
 			}
-		} else {
-			time.Sleep(1 * time.Second)
 		}
 
 		time.Sleep(1 * time.Second)

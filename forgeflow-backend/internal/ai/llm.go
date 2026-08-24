@@ -11,7 +11,8 @@ import (
 )
 
 type GeminiRequest struct {
-	Contents []Content `json:"contents"`
+	Contents []Content                `json:"contents"`
+	Tools    []map[string]interface{} `json:"tools,omitempty"`
 }
 
 type Content struct {
@@ -32,10 +33,10 @@ type GeminiResponse struct {
 	} `json:"candidates"`
 }
 
-func AnalyzePayload(prompt string, payloadData string) (string, error) {
+func AnalyzePayloadWithTools(prompt string, payloadData string, tools map[string]interface{}) (string, map[string]interface{}, error) {
 	apiKey := config.GetEnv("GEMINI_API_KEY", "")
 	if apiKey == "" {
-		return "", fmt.Errorf("GEMINI_API_KEY is not set")
+		return "", nil, fmt.Errorf("GEMINI_API_KEY is not set")
 	}
 
 	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=" + apiKey
@@ -47,28 +48,42 @@ func AnalyzePayload(prompt string, payloadData string) (string, error) {
 			{Parts: []Part{{Text: fullPrompt}}},
 		},
 	}
+
+	if tools != nil {
+		reqBody.Tools = []map[string]interface{}{tools}
+	}
+
 	jsonData, _ := json.Marshal(reqBody)
 
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return "", fmt.Errorf("network error calling AI API: %v", err)
+		return "", nil, fmt.Errorf("network error calling AI API: %v", err)
 	}
 	defer resp.Body.Close()
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
-
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("AI API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+		return "", nil, fmt.Errorf("AI API returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	var aiResponse GeminiResponse
-	if err := json.Unmarshal(bodyBytes, &aiResponse); err != nil {
-		return "", fmt.Errorf("failed to parse AI response:%v", err)
+	var rawResp map[string]interface{}
+	json.Unmarshal(bodyBytes, &rawResp)
+
+	candidates, ok := rawResp["candidates"].([]interface{})
+	if ok && len(candidates) > 0 {
+		candidate := candidates[0].(map[string]interface{})
+		content := candidate["content"].(map[string]interface{})
+		parts := content["parts"].([]interface{})
+
+		for _, p := range parts {
+			partMap := p.(map[string]interface{})
+			if fnCall, exists := partMap["functionCall"].(map[string]interface{}); exists {
+				fnName := fnCall["name"].(string)
+				fnArgs := fnCall["args"].(map[string]interface{})
+				return fnName, fnArgs, nil
+			}						
+		}
 	}
 
-	if len(aiResponse.Candidates) > 0 && len(aiResponse.Candidates[0].Content.Parts) > 0 {
-		return aiResponse.Candidates[0].Content.Parts[0].Text, nil
-	}
-
-	return "", fmt.Errorf("AI returned an empty response")
+	return "NO_TOOL_CALLED", nil, nil
 }
