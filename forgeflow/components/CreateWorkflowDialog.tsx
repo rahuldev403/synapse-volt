@@ -1,149 +1,164 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Plus, X, Loader2, GitBranch, Zap } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
+import { Loader2, Plus, X } from "lucide-react";
+import { ApiError, createApi } from "@/lib/api";
+import { useIsClient } from "@/lib/useIsClient";
+import { useToast } from "@/components/ui/Toast";
 
-export default function CreateWorkflowDialog() {
+export default function CreateWorkflowDialog({
+  onCreated,
+  trigger,
+}: {
+  onCreated?: (workflowId: string) => void;
+  trigger?: React.ReactNode;
+}) {
   const router = useRouter();
   const { getToken } = useAuth();
-  const [isOpen, setIsOpen] = useState(false);
+  const toast = useToast();
+  const api = useMemo(() => createApi(getToken), [getToken]);
+
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const isClient = useIsClient();
 
+  // Escape should close a modal — a dialog you can only leave by clicking a
+  // specific X is a small but constant friction.
   useEffect(() => {
-    setMounted(true);
-  }, []);
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
-    setIsSubmitting(true);
+    setSubmitting(true);
     try {
-      const token = await getToken();
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-      const res = await fetch(`${apiUrl}/api/v1/workflows`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || "Automated agent workflow",
-        }),
+      const workflow = await api.createWorkflow({
+        name: name.trim(),
+        description: description.trim(),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        setIsOpen(false);
-        setName("");
-        setDescription("");
-        router.push(`/workflow/${data.id}`);
-      } else {
-        alert("Failed to create workflow");
-      }
+      setOpen(false);
+      setName("");
+      setDescription("");
+      toast.success("Workflow created");
+
+      if (onCreated) onCreated(workflow.id);
+      else router.push(`/workflow/${workflow.id}`);
     } catch (err) {
-      console.error(err);
-      alert("Network error creating workflow");
+      toast.error(
+        err instanceof ApiError ? err.message : "Could not create the workflow",
+      );
     } finally {
-      setIsSubmitting(false);
+      setSubmitting(false);
     }
   };
 
   return (
     <>
-      <button
-        onClick={() => setIsOpen(true)}
-        className="flex items-center gap-2 bg-yellow-400 hover:bg-yellow-300 text-black px-4 py-2 rounded-xl font-mono font-bold text-xs tracking-wide transition shadow-[0_0_20px_rgba(250,204,21,0.35)] cursor-pointer"
-      >
-        <Plus size={15} />
-        <span>New Workflow</span>
+      <button onClick={() => setOpen(true)} className="contents">
+        {trigger ?? (
+          <span className="flex items-center gap-1.5 rounded-lg bg-amber-400 px-3.5 py-2 text-xs font-semibold text-slate-950 transition hover:bg-amber-300">
+            <Plus size={13} />
+            New workflow
+          </span>
+        )}
       </button>
 
-      {isOpen &&
-        mounted &&
+      {open &&
+        isClient &&
         createPortal(
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-xl p-4 animate-in fade-in duration-200">
-            <div className="relative bg-[#080808] border border-white/10 rounded-2xl w-full max-w-lg p-7 shadow-[0_25px_70px_rgba(0,0,0,0.95)] animate-in zoom-in-95 duration-150 overflow-hidden">
-              {/* Top ambient yellow accent line */}
-              <div className="absolute -top-px left-10 right-10 h-0.5 bg-gradient-to-r from-transparent via-yellow-400 to-transparent" />
-              <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-400/5 rounded-full blur-3xl pointer-events-none" />
-
-              <button
-                onClick={() => setIsOpen(false)}
-                className="absolute top-5 right-5 text-neutral-400 hover:text-white p-1.5 rounded-lg hover:bg-white/[0.05] transition cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-
-              <div className="flex items-center gap-2.5 mb-2">
-                <div className="p-2 rounded-lg bg-yellow-400/15 text-yellow-400 border border-yellow-400/30">
-                  <GitBranch size={16} />
-                </div>
-                <h3 className="text-lg font-bold text-white tracking-tight font-mono">
-                  INITIALIZE PIPELINE GRAPH
-                </h3>
-              </div>
-              <p className="text-xs text-neutral-400 mb-6 font-normal">
-                Initialize an autonomous workflow graph dispatched across Go
-                worker routines.
-              </p>
-
-              <form onSubmit={handleSubmit} className="space-y-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Create workflow"
+            onClick={(e) => e.target === e.currentTarget && setOpen(false)}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          >
+            <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#0a0c12] p-6 shadow-2xl">
+              <div className="mb-4 flex items-start justify-between">
                 <div>
-                  <label className="block text-xs font-mono font-medium text-neutral-300 mb-1.5 tracking-tight uppercase">
-                    Pipeline Name
+                  <h2 className="text-sm font-semibold text-slate-100">
+                    New workflow
+                  </h2>
+                  <p className="mt-0.5 text-[11px] text-slate-500">
+                    You can add nodes and connect them next.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setOpen(false)}
+                  aria-label="Close"
+                  className="rounded-md p-1 text-slate-500 transition hover:bg-white/[0.06] hover:text-slate-200"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              <form onSubmit={submit} className="space-y-3">
+                <div>
+                  <label
+                    htmlFor="workflow-name"
+                    className="mb-1.5 block text-[11px] font-medium text-slate-300"
+                  >
+                    Name
                   </label>
                   <input
-                    type="text"
+                    id="workflow-name"
+                    autoFocus
                     required
-                    placeholder="e.g. Inbound Support Triage Agent"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-black/80 border border-white/10 focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/30 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-neutral-600 focus:outline-none transition font-sans"
+                    placeholder="Support ticket triage"
+                    className="w-full rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-amber-400/60 focus:outline-none focus:ring-1 focus:ring-amber-400/25"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono font-medium text-neutral-300 mb-1.5 tracking-tight uppercase">
-                    Description
+                  <label
+                    htmlFor="workflow-description"
+                    className="mb-1.5 block text-[11px] font-medium text-slate-300"
+                  >
+                    Description{" "}
+                    <span className="text-slate-600">(optional)</span>
                   </label>
                   <textarea
+                    id="workflow-description"
                     rows={3}
-                    placeholder="Describe webhook ingress payloads and AI tool routines..."
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    className="w-full bg-black/80 border border-white/10 focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/30 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-neutral-600 focus:outline-none resize-none transition font-sans"
+                    placeholder="What this workflow does and what triggers it."
+                    className="w-full resize-none rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-amber-400/60 focus:outline-none focus:ring-1 focus:ring-amber-400/25"
                   />
                 </div>
 
-                <div className="flex justify-end gap-3 pt-4 border-t border-white/[0.08]">
+                <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => setIsOpen(false)}
-                    className="px-4 py-2.5 rounded-xl text-xs font-mono text-neutral-400 hover:text-white hover:bg-white/[0.04] transition cursor-pointer"
+                    onClick={() => setOpen(false)}
+                    className="rounded-lg px-3 py-2 text-xs text-slate-400 transition hover:bg-white/[0.05] hover:text-slate-200"
                   >
-                    [ Cancel ]
+                    Cancel
                   </button>
                   <button
                     type="submit"
-                    disabled={isSubmitting}
-                    className="flex items-center gap-2 bg-yellow-400 hover:bg-yellow-300 disabled:opacity-50 text-black px-5 py-2.5 rounded-xl text-xs font-mono font-bold transition shadow-[0_0_20px_rgba(250,204,21,0.35)] cursor-pointer"
+                    disabled={submitting || !name.trim()}
+                    className="flex items-center gap-1.5 rounded-lg bg-amber-400 px-4 py-2 text-xs font-semibold text-slate-950 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    {isSubmitting ? (
-                      <Loader2 size={14} className="animate-spin text-black" />
-                    ) : (
-                      <Zap size={14} fill="black" />
+                    {submitting && (
+                      <Loader2 size={12} className="animate-spin" />
                     )}
-                    <span>
-                      {isSubmitting ? "INITIALIZING..." : "CREATE GRAPH →"}
-                    </span>
+                    Create
                   </button>
                 </div>
               </form>

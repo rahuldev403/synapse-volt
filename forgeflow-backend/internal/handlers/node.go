@@ -1,157 +1,238 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
-	"log"
-	"time"
+	"errors"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5"
 	"github.com/rahuldev403/forgeflow/internal/database"
+	"github.com/rahuldev403/forgeflow/internal/domain"
 )
 
-type CreateNodeRequest struct {
-	Name       string                 `json:"name"`
-	Type       string                 `json:"type"`
-	Config     map[string]interface{} `json:"config"`
-	NextNodeId *string                `json:"next_node_id"`
+type createNodeInput struct {
+	Name      string         `json:"name"`
+	Type      string         `json:"type"`
+	Config    map[string]any `json:"config"`
+	PositionX float64        `json:"position_x"`
+	PositionY float64        `json:"position_y"`
 }
 
-type NodeResponse struct {
-	ID         string  `json:"id"`
-	Name       string  `json:"name"`
-	Type       string  `json:"type"`
-	NextNodeID *string `json:"next_node_id"`
+type updateNodeInput struct {
+	Name      *string        `json:"name"`
+	Config    map[string]any `json:"config"`
+	PositionX *float64       `json:"position_x"`
+	PositionY *float64       `json:"position_y"`
 }
 
-func CreateWorkflowNode(c *fiber.Ctx) error {
-	workflowId := c.Params("workflowId")
-
-	var req CreateNodeRequest
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid request body",
-		})
+// GetGraph returns nodes and edges together. The canvas needs both to render, and
+// two round trips would let it paint edges pointing at nodes it has not loaded yet.
+func GetGraph(c *fiber.Ctx) error {
+	workflowID, _, guardErr := guardWorkflow(c)
+	if guardErr != nil {
+		return guardErr
 	}
 
-	query := `
-		INSERT INTO nodes (workflow_id, name, type, config, next_node_id)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, created_at
-	`
-	var nodeId string
-	var createdAt time.Time
-
-	configBytes, err := json.Marshal(req.Config)
+	nodes, err := fetchNodes(c, workflowID)
 	if err != nil {
-		log.Printf("Failed to marshal config: %v", err)
-		configBytes = []byte("{}")
+		return err
 	}
-
-	err = database.DB.QueryRow(
-		context.Background(),
-		query,
-		workflowId,
-		req.Name,
-		req.Type,
-		configBytes,
-		req.NextNodeId,
-	).Scan(&nodeId, &createdAt)
-
+	edges, err := fetchEdges(c, workflowID)
 	if err != nil {
-		log.Printf("Failed to create node: %v", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to create workflow node",
-		})
+		return err
 	}
 
-	// Auto-link: If this isn't the first node and next_node_id wasn't explicitly provided, link the previous tail node to this new node
-	if req.NextNodeId == nil {
-		updateTailQuery := `
-			UPDATE nodes 
-			SET next_node_id = $1 
-			WHERE workflow_id = $2 
-			  AND next_node_id IS NULL 
-			  AND id != $1
-		`
-		if _, err := database.DB.Exec(context.Background(), updateTailQuery, nodeId, workflowId); err != nil {
-			log.Printf("Warning: Failed to update previous tail node next_node_id: %v", err)
-		}
-	}
-
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"message":     "Node added successfully",
-		"node_id":     nodeId,
-		"workflow_id": workflowId,
-		"created_at":  createdAt,
-	})
+	return c.JSON(domain.Graph{Nodes: nodes, Edges: edges})
 }
 
-func GetWorkflowNodes(c *fiber.Ctx) error {
-	workflowID := c.Params("workflowId")
-
-	query := `SELECT id, name, type, next_node_id FROM nodes WHERE workflow_id = $1 ORDER BY created_at ASC`
-	rows, err := database.DB.Query(context.Background(), query, workflowID)
-
+func fetchNodes(c *fiber.Ctx, workflowID string) ([]domain.Node, error) {
+	rows, err := database.DB.Query(c.Context(), `
+		SELECT id, workflow_id, name, type, config, position_x, position_y, created_at
+		FROM nodes WHERE workflow_id = $1 ORDER BY created_at ASC
+	`, workflowID)
 	if err != nil {
-		log.Printf("Failed to fetch nodes: %v", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database error"})
+		return nil, serverError(c, "fetching nodes", err)
 	}
 	defer rows.Close()
 
-	nodes := make([]NodeResponse, 0)
+	nodes := make([]domain.Node, 0)
 	for rows.Next() {
-		var n NodeResponse
-		if err := rows.Scan(&n.ID, &n.Name, &n.Type, &n.NextNodeID); err != nil {
-			continue
+		var n domain.Node
+		var configJSON []byte
+		if err := rows.Scan(&n.ID, &n.WorkflowID, &n.Name, &n.Type, &configJSON,
+			&n.PositionX, &n.PositionY, &n.CreatedAt); err != nil {
+			return nil, serverError(c, "scanning node row", err)
+		}
+		n.Config = map[string]any{}
+		if len(configJSON) > 0 {
+			_ = json.Unmarshal(configJSON, &n.Config)
 		}
 		nodes = append(nodes, n)
 	}
-
-	return c.JSON(nodes)
+	if err := rows.Err(); err != nil {
+		return nil, serverError(c, "reading node rows", err)
+	}
+	return nodes, nil
 }
 
-func DeleteWorkflowNode(c *fiber.Ctx) error {
-	workflowId := c.Params("workflowId")
-	nodeId := c.Params("nodeId")
+func CreateNode(c *fiber.Ctx) error {
+	workflowID, _, guardErr := guardWorkflow(c)
+	if guardErr != nil {
+		return guardErr
+	}
 
-	ctx := context.Background()
+	var in createNodeInput
+	if err := c.BodyParser(&in); err != nil {
+		return badRequest(c, "Could not read the request body as JSON")
+	}
 
-	// 1. Get target node's next_node_id before deleting
-	var nextNodeId *string
-	query := `SELECT next_node_id FROM nodes WHERE id = $1 AND workflow_id = $2`
-	err := database.DB.QueryRow(ctx, query, nodeId, workflowId).Scan(&nextNodeId)
+	nodeType := strings.ToUpper(strings.TrimSpace(in.Type))
+	if !domain.IsValidNodeType(nodeType) {
+		return badRequest(c, "Unknown node type: "+in.Type)
+	}
+
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		name = domain.DefaultName(nodeType)
+	}
+	if len(name) > 255 {
+		return badRequest(c, "Node name must be 255 characters or fewer")
+	}
+
+	// Start from the type's defaults so a node is runnable-ish the moment it lands
+	// on the canvas, then let anything the client sent override them.
+	config := domain.DefaultConfig(nodeType)
+	for k, v := range in.Config {
+		config[k] = v
+	}
+	configJSON, err := json.Marshal(config)
 	if err != nil {
-		log.Printf("Node not found or DB error: %v", err)
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Node not found",
-		})
+		return badRequest(c, "Node config could not be encoded as JSON")
 	}
 
-	// 2. Relink any node pointing to this node to point to this node's next_node_id
-	updateQuery := `UPDATE nodes SET next_node_id = $1 WHERE workflow_id = $2 AND next_node_id = $3`
-	if _, err := database.DB.Exec(ctx, updateQuery, nextNodeId, workflowId, nodeId); err != nil {
-		log.Printf("Warning: Failed to update linked nodes when deleting node: %v", err)
-	}
-
-	// 3. Delete the node
-	deleteQuery := `DELETE FROM nodes WHERE id = $1 AND workflow_id = $2`
-	res, err := database.DB.Exec(ctx, deleteQuery, nodeId, workflowId)
+	var node domain.Node
+	err = database.DB.QueryRow(c.Context(), `
+		INSERT INTO nodes (workflow_id, name, type, config, position_x, position_y)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, workflow_id, name, type, position_x, position_y, created_at
+	`, workflowID, name, nodeType, configJSON, in.PositionX, in.PositionY).Scan(
+		&node.ID, &node.WorkflowID, &node.Name, &node.Type,
+		&node.PositionX, &node.PositionY, &node.CreatedAt,
+	)
 	if err != nil {
-		log.Printf("Failed to delete node: %v", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to delete node",
-		})
+		return serverError(c, "creating node", err)
+	}
+	node.Config = config
+
+	touchWorkflow(c, workflowID)
+	return c.Status(fiber.StatusCreated).JSON(node)
+}
+
+// UpdateNode handles both inspector edits and canvas drags. Every field is optional
+// so a drag can persist a position without resending the whole config.
+func UpdateNode(c *fiber.Ctx) error {
+	workflowID, _, guardErr := guardWorkflow(c)
+	if guardErr != nil {
+		return guardErr
 	}
 
-	if res.RowsAffected() == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"error": "Node not found",
-		})
+	nodeID := c.Params("nodeId")
+	if !isUUID(nodeID) {
+		return badRequest(c, "Invalid node id")
 	}
 
-	return c.JSON(fiber.Map{
-		"message": "Node deleted successfully",
-		"node_id": nodeId,
-	})
+	var in updateNodeInput
+	if err := c.BodyParser(&in); err != nil {
+		return badRequest(c, "Could not read the request body as JSON")
+	}
+
+	var name *string
+	if in.Name != nil {
+		trimmed := strings.TrimSpace(*in.Name)
+		if trimmed == "" {
+			return badRequest(c, "Node name cannot be empty")
+		}
+		if len(trimmed) > 255 {
+			return badRequest(c, "Node name must be 255 characters or fewer")
+		}
+		name = &trimmed
+	}
+
+	var configJSON []byte
+	if in.Config != nil {
+		encoded, err := json.Marshal(in.Config)
+		if err != nil {
+			return badRequest(c, "Node config could not be encoded as JSON")
+		}
+		configJSON = encoded
+	}
+
+	var node domain.Node
+	var storedConfig []byte
+	err := database.DB.QueryRow(c.Context(), `
+		UPDATE nodes SET
+			name       = COALESCE($1, name),
+			config     = COALESCE($2::jsonb, config),
+			position_x = COALESCE($3, position_x),
+			position_y = COALESCE($4, position_y),
+			updated_at = now()
+		WHERE id = $5 AND workflow_id = $6
+		RETURNING id, workflow_id, name, type, config, position_x, position_y, created_at
+	`, name, configJSON, in.PositionX, in.PositionY, nodeID, workflowID).Scan(
+		&node.ID, &node.WorkflowID, &node.Name, &node.Type, &storedConfig,
+		&node.PositionX, &node.PositionY, &node.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notFound(c, "Node not found in this workflow")
+	}
+	if err != nil {
+		return serverError(c, "updating node", err)
+	}
+
+	node.Config = map[string]any{}
+	if len(storedConfig) > 0 {
+		_ = json.Unmarshal(storedConfig, &node.Config)
+	}
+
+	touchWorkflow(c, workflowID)
+	return c.JSON(node)
+}
+
+func DeleteNode(c *fiber.Ctx) error {
+	workflowID, _, guardErr := guardWorkflow(c)
+	if guardErr != nil {
+		return guardErr
+	}
+
+	nodeID := c.Params("nodeId")
+	if !isUUID(nodeID) {
+		return badRequest(c, "Invalid node id")
+	}
+
+	// Edges referencing this node are removed by ON DELETE CASCADE, so unlike v1
+	// there is no hand-rolled relinking step that can leave the graph inconsistent.
+	tag, err := database.DB.Exec(c.Context(),
+		`DELETE FROM nodes WHERE id = $1 AND workflow_id = $2`, nodeID, workflowID)
+	if err != nil {
+		return serverError(c, "deleting node", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return notFound(c, "Node not found in this workflow")
+	}
+
+	touchWorkflow(c, workflowID)
+	return c.JSON(fiber.Map{"message": "Node deleted", "id": nodeID})
+}
+
+// touchWorkflow keeps updated_at meaningful so the dashboard can sort by recent
+// activity. A failure here is not worth failing the request over.
+func touchWorkflow(c *fiber.Ctx, workflowID string) {
+	_, _ = database.DB.Exec(c.Context(), `UPDATE workflows SET updated_at = now() WHERE id = $1`, workflowID)
+}
+
+// GetNodeTypes serves the catalog the frontend builds its node library and
+// inspector forms from, so a new node type ships without a frontend change.
+func GetNodeTypes(c *fiber.Ctx) error {
+	return c.JSON(domain.NodeTypeCatalog)
 }

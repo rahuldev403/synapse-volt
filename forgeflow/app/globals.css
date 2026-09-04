@@ -1,112 +1,110 @@
 @import "tailwindcss";
-
 @import "@xyflow/react/dist/style.css";
 
+/*
+ * One dark surface scale plus one accent. v1 painted node types, "active",
+ * "success" and "pending" all in the same yellow, so nothing on screen could be
+ * told apart at a glance; status now owns colour and node identity uses hue.
+ */
 @layer base {
   :root {
-    --bg-base: #000000;
-    --bg-surface: #080808;
-    --bg-elevated: #0f0f0f;
-    --accent-yellow: #facc15;
-    --accent-yellow-glow: rgba(250, 204, 21, 0.4);
+    --surface-base: #05070b; /* page */
+    --surface-panel: #080a0f; /* side panels */
+    --surface-card: #0a0c12; /* cards, nodes */
+    --surface-raised: #0c0e14;
+    --accent: #fbbf24;
   }
 
   body {
-    background-color: #000000;
-    color: #f3f4f6;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    selection-background-color: rgba(250, 204, 21, 0.3);
-    selection-color: #ffffff;
   }
 
-  /* Sleek custom scrollbars */
+  ::selection {
+    background: rgba(251, 191, 36, 0.28);
+    color: #fff;
+  }
+
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(250, 204, 21, 0.2);
+    background: rgba(255, 255, 255, 0.1);
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(250, 204, 21, 0.4);
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  /* Respect a reduced-motion preference: the canvas and run panel animate a lot. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
-/* React Flow Visual Overrides */
-.react-flow__bg {
-  background-color: #000000 !important;
+/* --- React Flow ---------------------------------------------------------- */
+
+.react-flow__attribution {
+  display: none;
 }
 
-.react-flow__controls {
-  background: rgba(12, 12, 12, 0.9) !important;
-  backdrop-filter: blur(16px) !important;
-  border: 1px solid rgba(250, 204, 21, 0.2) !important;
-  border-radius: 12px !important;
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.8),
-    0 0 20px rgba(250, 204, 21, 0.08) !important;
-  overflow: hidden;
+/* Custom nodes bring their own surface, so the default chrome is cleared. */
+.react-flow__node-forge {
+  background: transparent;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  width: auto;
+  font-size: inherit;
+  color: inherit;
+}
+
+.react-flow__handle {
+  border-radius: 9999px;
+}
+
+/* Make the connection target generous without drawing a large visible dot --
+   a 12px handle is fiddly to hit with a mouse. */
+.react-flow__handle::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+
+.react-flow__edge-path {
+  stroke-linecap: round;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #fbbf24;
+  stroke-width: 2.5;
 }
 
 .react-flow__controls-button {
-  background: transparent !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
-  fill: #a3a3a3 !important;
-  transition: all 0.2s ease !important;
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  fill: #94a3b8;
 }
 
 .react-flow__controls-button:hover {
-  background: rgba(250, 204, 21, 0.1) !important;
-  fill: #facc15 !important;
+  background: rgba(255, 255, 255, 0.06);
+  fill: #f1f5f9;
 }
 
 .react-flow__controls-button:last-child {
-  border-bottom: none !important;
+  border-bottom: none;
 }
 
-.react-flow__attribution {
-  display: none !important;
-}
-
-/* Pixelated Grid & Dotted Patterns */
-.bg-pixel-grid {
-  background-size: 20px 20px;
-  background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-}
-
-.bg-dot-pattern {
-  background-size: 16px 16px;
-  background-image: radial-gradient(
-    rgba(250, 204, 21, 0.12) 1px,
-    transparent 1px
-  );
-}
-
-.bg-dot-pattern-white {
-  background-size: 20px 20px;
-  background-image: radial-gradient(
-    rgba(255, 255, 255, 0.08) 1px,
-    transparent 1px
-  );
-}
-
-/* Pixel shadow utility */
-.pixel-shadow-yellow {
-  box-shadow: 3px 3px 0px 0px #facc15;
-}
-
-.pixel-shadow-white {
-  box-shadow: 3px 3px 0px 0px #ffffff;
-}
-
-.pixel-border {
-  border: 1px solid rgba(250, 204, 21, 0.3);
+.react-flow__minimap {
+  border-radius: 8px;
 }

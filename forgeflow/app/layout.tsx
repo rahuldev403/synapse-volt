@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import "./globals.css";
-import { ClerkProvider } from "@clerk/nextjs";
 import { Inter } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
+import { ToastProvider } from "@/components/ui/Toast";
+import "./globals.css";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -10,9 +11,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "SynapseVolt — Autonomous AI Pipeline Orchestrator",
+  title: "ForgeFlow — Visual workflow automation",
   description:
-    "High-throughput DAG workflow engine with Go concurrency and deterministic AI agent tool calling.",
+    "Build a graph of webhooks, HTTP calls and AI agents, then watch every step of a run execute on a Go worker pool.",
 };
 
 export default function RootLayout({
@@ -26,11 +27,13 @@ export default function RootLayout({
       signUpFallbackRedirectUrl="/"
       afterSignOutUrl="/"
     >
-      <html lang="en" className="dark scroll-smooth">
+      {/* Next 16 only applies the smooth-scroll override when this attribute is
+          present; the scroll-smooth class alone is no longer enough. */}
+      <html lang="en" className="dark" data-scroll-behavior="smooth">
         <body
-          className={`${inter.className} bg-black text-neutral-100 min-h-screen antialiased selection:bg-yellow-400 selection:text-black`}
+          className={`${inter.className} min-h-screen bg-[#05070b] text-slate-200 antialiased`}
         >
-          {children}
+          <ToastProvider>{children}</ToastProvider>
         </body>
       </html>
     </ClerkProvider>

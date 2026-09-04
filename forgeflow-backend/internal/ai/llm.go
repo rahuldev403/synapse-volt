@@ -2,88 +2,174 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/rahuldev403/forgeflow/internal/config"
 )
 
-type GeminiRequest struct {
-	Contents []Content                `json:"contents"`
-	Tools    []map[string]interface{} `json:"tools,omitempty"`
+const (
+	defaultModel = "gemini-2.0-flash"
+	apiBase      = "https://generativelanguage.googleapis.com/v1beta/models"
+)
+
+var client = &http.Client{Timeout: 30 * time.Second}
+
+type Request struct {
+	Model   string
+	Prompt  string
+	Context string
+	Tools   []ToolDeclaration
 }
 
-type Content struct {
-	Parts []Part `json:"parts"`
+type Result struct {
+	Text     string
+	ToolName string
+	ToolArgs map[string]any
 }
 
-type Part struct {
-	Text string `json:"text"`
+// Wire types for the Gemini generateContent API. Modelling the response instead of
+// walking `map[string]any` with unchecked assertions means a surprising payload
+// returns an error rather than panicking a worker goroutine.
+type geminiRequest struct {
+	Contents []geminiContent `json:"contents"`
+	Tools    []geminiTool    `json:"tools,omitempty"`
 }
 
-type GeminiResponse struct {
+type geminiContent struct {
+	Role  string       `json:"role,omitempty"`
+	Parts []geminiPart `json:"parts"`
+}
+
+type geminiPart struct {
+	Text         string              `json:"text,omitempty"`
+	FunctionCall *geminiFunctionCall `json:"functionCall,omitempty"`
+}
+
+type geminiFunctionCall struct {
+	Name string         `json:"name"`
+	Args map[string]any `json:"args"`
+}
+
+type geminiTool struct {
+	FunctionDeclarations []ToolDeclaration `json:"function_declarations"`
+}
+
+type geminiResponse struct {
 	Candidates []struct {
 		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
+			Parts []geminiPart `json:"parts"`
 		} `json:"content"`
+		FinishReason string `json:"finishReason"`
 	} `json:"candidates"`
+	PromptFeedback *struct {
+		BlockReason string `json:"blockReason"`
+	} `json:"promptFeedback"`
+	Error *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Status  string `json:"status"`
+	} `json:"error"`
 }
 
-func AnalyzePayloadWithTools(prompt string, payloadData string, tools map[string]interface{}) (string, map[string]interface{}, error) {
+// Complete sends one prompt plus the run context and returns either the model's
+// text or the tool it chose to call.
+func Complete(ctx context.Context, req Request) (Result, error) {
 	apiKey := config.GetEnv("GEMINI_API_KEY", "")
 	if apiKey == "" {
-		return "", nil, fmt.Errorf("GEMINI_API_KEY is not set")
+		return Result{}, fmt.Errorf("GEMINI_API_KEY is not set — add it to forgeflow-backend/.env")
 	}
 
-	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=" + apiKey
-
-	fullPrompt := fmt.Sprintf("%s\n\nData:\n%s", prompt, payloadData)
-
-	reqBody := GeminiRequest{
-		Contents: []Content{
-			{Parts: []Part{{Text: fullPrompt}}},
-		},
+	model := strings.TrimSpace(req.Model)
+	if model == "" {
+		model = defaultModel
 	}
 
-	if tools != nil {
-		reqBody.Tools = []map[string]interface{}{tools}
+	prompt := req.Prompt
+	if req.Context != "" {
+		prompt = fmt.Sprintf("%s\n\n--- Workflow run context (JSON) ---\n%s", req.Prompt, req.Context)
 	}
 
-	jsonData, _ := json.Marshal(reqBody)
+	body := geminiRequest{
+		Contents: []geminiContent{{
+			Role:  "user",
+			Parts: []geminiPart{{Text: prompt}},
+		}},
+	}
+	if len(req.Tools) > 0 {
+		body.Tools = []geminiTool{{FunctionDeclarations: req.Tools}}
+	}
 
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+	payload, err := json.Marshal(body)
 	if err != nil {
-		return "", nil, fmt.Errorf("network error calling AI API: %v", err)
+		return Result{}, fmt.Errorf("encoding AI request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/%s:generateContent", apiBase, model)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	if err != nil {
+		return Result{}, fmt.Errorf("building AI request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	// The key goes in a header rather than the query string so it does not end up in
+	// proxy logs or error messages.
+	httpReq.Header.Set("x-goog-api-key", apiKey)
+
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return Result{}, fmt.Errorf("calling Gemini: %w", err)
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return "", nil, fmt.Errorf("AI API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return Result{}, fmt.Errorf("reading Gemini response: %w", err)
 	}
 
-	var rawResp map[string]interface{}
-	json.Unmarshal(bodyBytes, &rawResp)
+	var parsed geminiResponse
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return Result{}, fmt.Errorf("Gemini returned an unreadable response (status %d)", resp.StatusCode)
+	}
 
-	candidates, ok := rawResp["candidates"].([]interface{})
-	if ok && len(candidates) > 0 {
-		candidate := candidates[0].(map[string]interface{})
-		content := candidate["content"].(map[string]interface{})
-		parts := content["parts"].([]interface{})
+	if parsed.Error != nil {
+		return Result{}, fmt.Errorf("Gemini error %d (%s): %s",
+			parsed.Error.Code, parsed.Error.Status, parsed.Error.Message)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return Result{}, fmt.Errorf("Gemini returned status %d", resp.StatusCode)
+	}
+	if parsed.PromptFeedback != nil && parsed.PromptFeedback.BlockReason != "" {
+		return Result{}, fmt.Errorf("Gemini blocked the prompt: %s", parsed.PromptFeedback.BlockReason)
+	}
+	if len(parsed.Candidates) == 0 {
+		return Result{}, fmt.Errorf("Gemini returned no candidates")
+	}
 
-		for _, p := range parts {
-			partMap := p.(map[string]interface{})
-			if fnCall, exists := partMap["functionCall"].(map[string]interface{}); exists {
-				fnName := fnCall["name"].(string)
-				fnArgs := fnCall["args"].(map[string]interface{})
-				return fnName, fnArgs, nil
-			}						
+	var result Result
+	var textParts []string
+
+	for _, part := range parsed.Candidates[0].Content.Parts {
+		if part.FunctionCall != nil && part.FunctionCall.Name != "" {
+			result.ToolName = part.FunctionCall.Name
+			result.ToolArgs = part.FunctionCall.Args
+			if result.ToolArgs == nil {
+				result.ToolArgs = map[string]any{}
+			}
+		}
+		if part.Text != "" {
+			textParts = append(textParts, part.Text)
 		}
 	}
 
-	return "NO_TOOL_CALLED", nil, nil
+	result.Text = strings.TrimSpace(strings.Join(textParts, "\n"))
+	if result.Text == "" && result.ToolName == "" {
+		return Result{}, fmt.Errorf("Gemini returned an empty response (finish reason: %s)",
+			parsed.Candidates[0].FinishReason)
+	}
+	return result, nil
 }
