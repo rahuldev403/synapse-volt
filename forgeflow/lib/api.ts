@@ -194,3 +194,40 @@ export const getNodeTypes = () =>
 
 export const webhookUrl = (workflowId: string) =>
   `${API_URL}/api/v1/webhooks/${workflowId}`;
+
+/**
+ * Checks that the API on the other end is actually this version of the backend.
+ *
+ * `/node-types` is public and only exists from the DAG rewrite onward, so a
+ * non-200 here means the frontend is talking to an older deployment. That is worth
+ * detecting explicitly: an old backend still answers POST /workflows, so creating
+ * a workflow succeeds and only the newer routes 404 — which looks like a missing
+ * record rather than a stale deployment.
+ */
+export async function checkApiVersion(): Promise<
+  { ok: true } | { ok: false; reason: string }
+> {
+  try {
+    const res = await fetch(`${API_URL}/api/v1/node-types`, {
+      cache: "no-store",
+    });
+
+    if (res.status === 401 || res.status === 404) {
+      return {
+        ok: false,
+        reason: `The API at ${API_URL} is an older build — it does not serve /api/v1/node-types. Redeploy the backend, or point NEXT_PUBLIC_API_URL at one running the current code.`,
+      };
+    }
+    if (!res.ok) {
+      return { ok: false, reason: `${API_URL} returned ${res.status}.` };
+    }
+
+    const body = await res.json();
+    if (!Array.isArray(body)) {
+      return { ok: false, reason: `${API_URL} did not return a node catalog.` };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: `Cannot reach ${API_URL}.` };
+  }
+}

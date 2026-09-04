@@ -1,1 +1,16 @@
+# Secrets
 .env
+.env.local
+
+# Air / go build output
+tmp/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go test artifacts
+*.test
+*.out
+coverage.*
